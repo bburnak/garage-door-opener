@@ -75,11 +75,33 @@ Edit `config.py`:
 
 ### 4. Run
 
+Run the MQTT daemon (this is what Home Assistant talks to):
+
 ```bash
 python3 garage_door_opener.py
+# equivalent to:
+python3 garage_door_opener.py daemon
 ```
 
 You should see the controller initialize the GPIO pin, connect to MQTT, and subscribe to the command topic.
+
+## Manual trigger over SSH (no MQTT)
+
+If you just want to pulse the relay directly — for example from an SSH session, a cron job, or while the MQTT daemon isn't running — use the `trigger` subcommand:
+
+```bash
+python3 garage_door_opener.py trigger
+# or, with an explicit action label:
+python3 garage_door_opener.py trigger open
+python3 garage_door_opener.py trigger close
+python3 garage_door_opener.py trigger toggle
+```
+
+This pulses the relay once for `RELAY_ACTIVATION_TIME` seconds and exits. No MQTT broker is contacted.
+
+The action argument (`open` / `close` / `toggle`) is purely a label for logging — the relay pulse itself is identical, just like pressing the wall button.
+
+> **Note:** Don't run `trigger` while the MQTT daemon (or systemd service) is also running — both will fight for the GPIO pin. Stop the service first (`sudo systemctl stop garage-door-opener`) or just use MQTT.
 
 ## MQTT topics
 

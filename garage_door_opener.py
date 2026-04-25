@@ -2,8 +2,12 @@
 """
 Garage door opener integration for Home Assistant.
 Connects via MQTT and triggers relay on Raspberry Pi GPIO.
+
+Can also be used as a standalone CLI to pulse the relay once, e.g.:
+    python3 garage_door_opener.py trigger
 """
 
+import argparse
 import time
 import sys
 import json
@@ -99,6 +103,7 @@ class GarageDoorController:
             logger.error(f"Error triggering door: {e}")
             self.state = "error"
             self.publish_state("error")
+            raise
     
     def on_connect(self, client, userdata, flags, rc):
         """MQTT on_connect callback."""
@@ -135,7 +140,9 @@ class GarageDoorController:
             logger.info("Disconnected from MQTT broker")
     
     def publish_state(self, state):
-        """Publish current state to MQTT."""
+        """Publish current state to MQTT (no-op if not connected)."""
+        if not self.client.is_connected():
+            return
         try:
             self.client.publish(MQTT_STATE_TOPIC, state, retain=True)
             logger.info(f"Published state: {state}")
@@ -167,7 +174,8 @@ class GarageDoorController:
     def cleanup(self):
         """Clean up resources."""
         try:
-            self.client.disconnect()
+            if self.client.is_connected():
+                self.client.disconnect()
             self._relay_off()
             GPIO.cleanup()
             logger.info("Cleanup complete")
@@ -175,11 +183,53 @@ class GarageDoorController:
             logger.error(f"Error during cleanup: {e}")
 
 
-def main():
-    """Main entry point."""
-    logger.info("Starting Garage Door Opener...")
+def _run_daemon():
+    """Run the MQTT daemon (default mode)."""
+    logger.info("Starting Garage Door Opener (MQTT daemon)...")
     controller = GarageDoorController()
     controller.start()
+
+
+def _run_trigger(action):
+    """Pulse the relay once and exit. No MQTT involved."""
+    logger.info(f"Triggering garage door ({action}) via CLI...")
+    controller = GarageDoorController()
+    try:
+        controller.trigger_door(action)
+    finally:
+        controller.cleanup()
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Garage door opener: MQTT daemon or one-shot CLI trigger."
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser(
+        "daemon",
+        help="Run the MQTT daemon (default if no command is given).",
+    )
+
+    trigger_parser = subparsers.add_parser(
+        "trigger",
+        help="Pulse the relay once and exit (no MQTT). Useful over SSH.",
+    )
+    trigger_parser.add_argument(
+        "action",
+        nargs="?",
+        default="toggle",
+        choices=["open", "close", "toggle"],
+        help="Action label to log/report (default: toggle). The relay pulse is identical in all cases.",
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "trigger":
+        _run_trigger(args.action)
+    else:
+        _run_daemon()
 
 
 if __name__ == "__main__":
