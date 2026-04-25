@@ -1,2 +1,2 @@
-﻿# Garage Door Opener - Requirements
-python>=3.8
+﻿paho-mqtt>=1.6.1,<2
+RPi.GPIO>=0.7.0; platform_machine in "armv6l armv7l aarch64"
