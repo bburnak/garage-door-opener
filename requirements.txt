@@ -1,0 +1,2 @@
+﻿# Garage Door Opener - Requirements
+python>=3.8
