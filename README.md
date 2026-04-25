@@ -50,15 +50,28 @@ git clone https://github.com/bburnak/garage-door-opener.git
 cd garage-door-opener
 ```
 
-### 2. Install dependencies
+### 2. Create a virtual environment
+
+On Raspberry Pi OS (Bookworm and newer), system-wide `pip install` is blocked by [PEP 668](https://peps.python.org/pep-0668/), so a venv is required:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3-pip
-pip3 install -r requirements.txt
+sudo apt-get install -y python3-venv python3-pip
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-### 3. Configure
+Your shell prompt should now show `(.venv)`. To leave the venv later, run `deactivate`.
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+> **Note:** `RPi.GPIO` only installs on the Raspberry Pi itself. On other platforms, the install will fail — that's expected.
+
+### 4. Configure
 
 ```bash
 cp config.example.py config.py
@@ -73,14 +86,14 @@ Edit `config.py`:
 
 `config.py` is gitignored so credentials stay local.
 
-### 4. Run
+### 5. Run
 
 Run the MQTT daemon (this is what Home Assistant talks to):
 
 ```bash
-python3 garage_door_opener.py
+python garage_door_opener.py
 # equivalent to:
-python3 garage_door_opener.py daemon
+python garage_door_opener.py daemon
 ```
 
 You should see the controller initialize the GPIO pin, connect to MQTT, and subscribe to the command topic.
@@ -90,11 +103,19 @@ You should see the controller initialize the GPIO pin, connect to MQTT, and subs
 If you just want to pulse the relay directly — for example from an SSH session, a cron job, or while the MQTT daemon isn't running — use the `trigger` subcommand:
 
 ```bash
-python3 garage_door_opener.py trigger
+cd ~/Documents/garage-door-opener
+source .venv/bin/activate
+python garage_door_opener.py trigger
 # or, with an explicit action label:
-python3 garage_door_opener.py trigger open
-python3 garage_door_opener.py trigger close
-python3 garage_door_opener.py trigger toggle
+python garage_door_opener.py trigger open
+python garage_door_opener.py trigger close
+python garage_door_opener.py trigger toggle
+```
+
+If you don't want to activate the venv every time, call its Python directly:
+
+```bash
+~/Documents/garage-door-opener/.venv/bin/python ~/Documents/garage-door-opener/garage_door_opener.py trigger
 ```
 
 This pulses the relay once for `RELAY_ACTIVATION_TIME` seconds and exits. No MQTT broker is contacted.
@@ -137,9 +158,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/garage-door-opener
-ExecStart=/usr/bin/python3 /home/pi/garage-door-opener/garage_door_opener.py
+User=baris
+WorkingDirectory=/home/baris/Documents/garage-door-opener
+ExecStart=/home/baris/Documents/garage-door-opener/.venv/bin/python /home/baris/Documents/garage-door-opener/garage_door_opener.py
 Restart=always
 RestartSec=10
 
@@ -170,6 +191,7 @@ journalctl -u garage-door-opener -f
 ├── config.example.py       # Template — copy to config.py and fill in
 ├── config.py               # Local config (gitignored)
 ├── requirements.txt        # paho-mqtt, RPi.GPIO
+├── .venv/                  # Python virtual environment (gitignored)
 ├── .gitignore
 └── README.md
 ```
