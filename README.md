@@ -126,25 +126,50 @@ The action argument (`open` / `close` / `toggle`) is purely a label for logging 
 
 ## MQTT topics
 
-| Direction       | Topic                            | Payloads                                       |
-| --------------- | -------------------------------- | ---------------------------------------------- |
-| HA → Pi (cmd)   | `homeassistant/garage/command`   | `open`, `close`, `toggle`                      |
-| Pi → HA (state) | `homeassistant/garage/state`     | `connected`, `success_open`, `success_close`, `error` |
+Topics are derived from `DEVICE_ID` in `config.py` (default: `garage_door_pi`):
+
+| Direction       | Topic                                                  | Payloads                                              |
+| --------------- | ------------------------------------------------------ | ----------------------------------------------------- |
+| HA → Pi (cmd)   | `garage_door/garage_door_pi/set`                       | `open`, `close`, `toggle`, `stop`                     |
+| Pi → HA (state) | `garage_door/garage_door_pi/state`                     | `open`, `closed`, `opening`, `closing`                |
+| Pi → HA (avail) | `garage_door/garage_door_pi/availability`              | `online` / `offline` (auto + LWT)                     |
+| Pi → HA (disc.) | `homeassistant/cover/garage_door_pi/<uid>/config`      | JSON discovery payload (published once on connect)    |
 
 ## Home Assistant configuration
 
-Minimal `configuration.yaml` snippet:
+### 1. Create an MQTT user for the Pi
 
-```yaml
-mqtt:
-  cover:
-    - name: Garage Door
-      command_topic: homeassistant/garage/command
-      state_topic: homeassistant/garage/state
-      payload_open: open
-      payload_close: close
-      payload_stop: toggle
+In Home Assistant: **Settings → People → Users → Add user**, e.g. username `garage_pi` with a strong password. Tick **Can only log in from the local network**. (You can also reuse an existing MQTT user if you have one.)
+
+Put those credentials in `config.py` on the Pi:
+
+```python
+MQTT_BROKER   = "homeassistant.local"
+MQTT_USERNAME = "garage_pi"
+MQTT_PASSWORD = "<your-password>"
 ```
+
+### 2. That's it — the entity auto-appears
+
+When you start the daemon, it publishes an [MQTT discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) payload. Home Assistant creates the entity automatically:
+
+- Entity: `cover.garage_door_pi`
+- Friendly name: **Garage Door**
+- Device class: `garage` (renders open/close icons in the UI)
+- Reports `opening` → `open` (and `closing` → `closed`) using `TRAVEL_TIME` from `config.py`
+- Goes **unavailable** automatically if the Pi disconnects (LWT)
+
+No `configuration.yaml` edits are needed. You can verify under **Settings → Devices & services → MQTT → Devices**.
+
+### 3. Tune for your door
+
+In `config.py`:
+
+- `TRAVEL_TIME` — seconds it takes to fully open/close (default 15)
+- `INITIAL_STATE` — `"closed"` (default) or `"open"` for the assumed state on first start
+- `RELAY_ACTIVATION_TIME` — button press duration (default 0.3s)
+
+> **Note on state accuracy:** Without a real position sensor, the daemon *assumes* the door toggles between open/closed on each press. If someone uses the physical wall button or external remote, HA's state can drift. To fix this properly, add a magnetic reed switch to GPIO and report the real state — not implemented in this version.
 
 ## Run as a service (optional)
 

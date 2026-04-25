@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """
 Garage door opener integration for Home Assistant.
-Connects via MQTT and triggers relay on Raspberry Pi GPIO.
 
-Can also be used as a standalone CLI to pulse the relay once, e.g.:
-    python3 garage_door_opener.py trigger
+Two modes:
+  - daemon  : connect to MQTT, advertise via HA discovery, react to commands.
+              (default if no subcommand is given)
+  - trigger : pulse the relay once and exit. No MQTT involved.
+              Useful from an SSH session.
+
+Examples:
+    python garage_door_opener.py
+    python garage_door_opener.py daemon
+    python garage_door_opener.py trigger
+    python garage_door_opener.py trigger open
 """
 
 import argparse
-import time
-import sys
 import json
 import logging
-from threading import Thread
+import sys
+import time
+from threading import Thread, Lock
 
 try:
     import RPi.GPIO as GPIO
@@ -25,21 +33,36 @@ except ImportError:
 from config import (
     GPIO_PIN,
     RELAY_ACTIVATION_TIME,
+    RELAY_ACTIVE_LOW,
     MQTT_BROKER,
     MQTT_PORT,
     MQTT_USERNAME,
     MQTT_PASSWORD,
+    DEVICE_ID,
+    DEVICE_NAME,
+    TRAVEL_TIME,
+    INITIAL_STATE,
     MQTT_COMMAND_TOPIC,
     MQTT_STATE_TOPIC,
-    RELAY_ACTIVE_LOW,
+    MQTT_AVAILABILITY_TOPIC,
+    HA_DISCOVERY_PREFIX,
 )
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+# Cover states (match Home Assistant's MQTT cover defaults)
+STATE_OPEN = "open"
+STATE_CLOSED = "closed"
+STATE_OPENING = "opening"
+STATE_CLOSING = "closing"
+
+PAYLOAD_AVAILABLE = "online"
+PAYLOAD_NOT_AVAILABLE = "offline"
 
 
 class GarageDoorController:
@@ -47,161 +70,229 @@ class GarageDoorController:
         self.gpio_pin = GPIO_PIN
         self.relay_active_low = RELAY_ACTIVE_LOW
         self.activation_time = RELAY_ACTIVATION_TIME
-        self.state = "idle"
-        
-        # Setup GPIO
+        self.travel_time = TRAVEL_TIME
+
+        # Assumed door state. We have no real sensor, so we toggle on each press.
+        if INITIAL_STATE not in (STATE_OPEN, STATE_CLOSED):
+            raise ValueError(
+                f"INITIAL_STATE must be 'open' or 'closed', got {INITIAL_STATE!r}"
+            )
+        self.assumed_state = INITIAL_STATE
+        self._action_lock = Lock()
+
         self._setup_gpio()
-        
-        # Setup MQTT
-        self.client = mqtt.Client()
+
+        self.client = mqtt.Client(client_id=DEVICE_ID)
+        self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        # LWT: if we drop off the network, the broker will publish "offline".
+        self.client.will_set(
+            MQTT_AVAILABILITY_TOPIC, PAYLOAD_NOT_AVAILABLE, qos=1, retain=True
+        )
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
-        
+
+    # -- GPIO ---------------------------------------------------------------
+
     def _setup_gpio(self):
-        """Initialize GPIO pin for relay control."""
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
         GPIO.setup(self.gpio_pin, GPIO.OUT)
         self._relay_off()
-        logger.info(f"GPIO {self.gpio_pin} initialized")
-    
+        logger.info("GPIO %s initialized", self.gpio_pin)
+
     def _relay_on(self):
-        """Activate relay (energize the button contact)."""
-        if self.relay_active_low:
-            GPIO.output(self.gpio_pin, GPIO.LOW)
-        else:
-            GPIO.output(self.gpio_pin, GPIO.HIGH)
-        logger.info("Relay ON")
-    
+        GPIO.output(self.gpio_pin, GPIO.LOW if self.relay_active_low else GPIO.HIGH)
+        logger.debug("Relay ON")
+
     def _relay_off(self):
-        """Deactivate relay."""
-        if self.relay_active_low:
-            GPIO.output(self.gpio_pin, GPIO.HIGH)
-        else:
-            GPIO.output(self.gpio_pin, GPIO.LOW)
-        logger.info("Relay OFF")
-    
-    def trigger_door(self, action):
-        """Trigger garage door action (open/close)."""
-        if self.state == "triggering":
-            logger.warning("Already triggering door, ignoring request")
+        GPIO.output(self.gpio_pin, GPIO.HIGH if self.relay_active_low else GPIO.LOW)
+        logger.debug("Relay OFF")
+
+    def _pulse_relay(self):
+        """One physical button press."""
+        self._relay_on()
+        time.sleep(self.activation_time)
+        self._relay_off()
+
+    # -- High-level actions -------------------------------------------------
+
+    def trigger_door(self, action="toggle"):
+        """
+        Pulse the relay once and update assumed state.
+
+        `action` is one of: open, close, toggle. The relay pulse is identical
+        in all cases (it just emulates one button press); the label only
+        affects which transition we report to Home Assistant.
+        """
+        if not self._action_lock.acquire(blocking=False):
+            logger.warning("Door already moving, ignoring %s", action)
             return
-        
-        self.state = "triggering"
-        logger.info(f"Triggering garage door action: {action}")
-        
+
         try:
-            self._relay_on()
-            time.sleep(self.activation_time)
-            self._relay_off()
-            
-            self.state = "idle"
-            self.publish_state(f"success_{action}")
-            logger.info(f"Door action {action} complete")
-        except Exception as e:
-            logger.error(f"Error triggering door: {e}")
-            self.state = "error"
-            self.publish_state("error")
+            if action == "open":
+                target = STATE_OPEN
+            elif action == "close":
+                target = STATE_CLOSED
+            else:  # toggle
+                target = STATE_CLOSED if self.assumed_state == STATE_OPEN else STATE_OPEN
+
+            transitional = STATE_OPENING if target == STATE_OPEN else STATE_CLOSING
+            self.publish_state(transitional)
+
+            logger.info("Pulsing relay (action=%s, target=%s)", action, target)
+            self._pulse_relay()
+
+            # Wait for the door to physically finish moving before reporting final state.
+            time.sleep(self.travel_time)
+
+            self.assumed_state = target
+            self.publish_state(target)
+            logger.info("Door is now %s", target)
+        except Exception:
+            logger.exception("Error triggering door")
             raise
-    
+        finally:
+            self._action_lock.release()
+
+    # -- MQTT ---------------------------------------------------------------
+
     def on_connect(self, client, userdata, flags, rc):
-        """MQTT on_connect callback."""
-        if rc == 0:
-            logger.info(f"Connected to MQTT broker {MQTT_BROKER}:{MQTT_PORT}")
-            # Subscribe to command topic
-            client.subscribe(MQTT_COMMAND_TOPIC)
-            logger.info(f"Subscribed to {MQTT_COMMAND_TOPIC}")
-            self.publish_state("connected")
-        else:
-            logger.error(f"MQTT connection failed with code {rc}")
-    
-    def on_message(self, client, userdata, msg):
-        """MQTT on_message callback."""
-        try:
-            payload = msg.payload.decode('utf-8').lower()
-            logger.info(f"Received message on {msg.topic}: {payload}")
-            
-            if payload in ["open", "close", "toggle"]:
-                # Run trigger in separate thread to avoid blocking MQTT loop
-                thread = Thread(target=self.trigger_door, args=(payload,))
-                thread.daemon = True
-                thread.start()
-            else:
-                logger.warning(f"Unknown command: {payload}")
-        except Exception as e:
-            logger.error(f"Error processing message: {e}")
-    
-    def on_disconnect(self, client, userdata, rc):
-        """MQTT on_disconnect callback."""
         if rc != 0:
-            logger.warning(f"Unexpected MQTT disconnection (code {rc})")
+            logger.error("MQTT connection failed (rc=%s)", rc)
+            return
+
+        logger.info("Connected to MQTT broker %s:%s", MQTT_BROKER, MQTT_PORT)
+        client.subscribe(MQTT_COMMAND_TOPIC, qos=1)
+        logger.info("Subscribed to %s", MQTT_COMMAND_TOPIC)
+
+        self._publish_discovery()
+        client.publish(
+            MQTT_AVAILABILITY_TOPIC, PAYLOAD_AVAILABLE, qos=1, retain=True
+        )
+        # Re-publish current assumed state so HA picks it up immediately.
+        self.publish_state(self.assumed_state)
+
+    def on_message(self, client, userdata, msg):
+        try:
+            payload = msg.payload.decode("utf-8").strip().lower()
+        except Exception:
+            logger.exception("Could not decode MQTT payload")
+            return
+
+        logger.info("Received %s on %s", payload, msg.topic)
+
+        if payload in ("open", "close", "toggle"):
+            Thread(target=self.trigger_door, args=(payload,), daemon=True).start()
+        elif payload == "stop":
+            # Real garage openers stop on a second button press while moving.
+            Thread(target=self.trigger_door, args=("toggle",), daemon=True).start()
+        else:
+            logger.warning("Ignoring unknown command: %r", payload)
+
+    def on_disconnect(self, client, userdata, rc):
+        if rc != 0:
+            logger.warning("Unexpected MQTT disconnection (rc=%s); will retry", rc)
         else:
             logger.info("Disconnected from MQTT broker")
-    
+
     def publish_state(self, state):
-        """Publish current state to MQTT (no-op if not connected)."""
         if not self.client.is_connected():
             return
-        try:
-            self.client.publish(MQTT_STATE_TOPIC, state, retain=True)
-            logger.info(f"Published state: {state}")
-        except Exception as e:
-            logger.error(f"Error publishing state: {e}")
-    
+        self.client.publish(MQTT_STATE_TOPIC, state, qos=1, retain=True)
+        logger.info("Published state: %s", state)
+
+    def _publish_discovery(self):
+        """Tell Home Assistant about this cover via MQTT discovery."""
+        unique_id = f"{DEVICE_ID}_cover"
+        config_topic = (
+            f"{HA_DISCOVERY_PREFIX}/cover/{DEVICE_ID}/{unique_id}/config"
+        )
+        payload = {
+            "name": DEVICE_NAME,
+            "unique_id": unique_id,
+            "object_id": DEVICE_ID,
+            "device_class": "garage",
+            "command_topic": MQTT_COMMAND_TOPIC,
+            "state_topic": MQTT_STATE_TOPIC,
+            "availability_topic": MQTT_AVAILABILITY_TOPIC,
+            "payload_available": PAYLOAD_AVAILABLE,
+            "payload_not_available": PAYLOAD_NOT_AVAILABLE,
+            "payload_open": "open",
+            "payload_close": "close",
+            "payload_stop": "stop",
+            "state_open": STATE_OPEN,
+            "state_closed": STATE_CLOSED,
+            "state_opening": STATE_OPENING,
+            "state_closing": STATE_CLOSING,
+            "optimistic": False,
+            "qos": 1,
+            "retain": True,
+            "device": {
+                "identifiers": [DEVICE_ID],
+                "name": DEVICE_NAME,
+                "manufacturer": "DIY",
+                "model": "Raspberry Pi + relay",
+            },
+        }
+        self.client.publish(config_topic, json.dumps(payload), qos=1, retain=True)
+        logger.info("Published HA discovery config to %s", config_topic)
+
+    # -- Lifecycle ----------------------------------------------------------
+
     def connect(self):
-        """Connect to MQTT broker."""
-        try:
-            self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-            self.client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
-            logger.info("Connecting to MQTT broker...")
-        except Exception as e:
-            logger.error(f"Failed to connect to MQTT: {e}")
-            raise
-    
+        logger.info("Connecting to MQTT broker %s:%s ...", MQTT_BROKER, MQTT_PORT)
+        self.client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
+
     def start(self):
-        """Start the controller (blocking call)."""
         try:
             self.connect()
-            self.client.loop_forever()
+            self.client.loop_forever(retry_first_connection=True)
         except KeyboardInterrupt:
             logger.info("Shutting down...")
-        except Exception as e:
-            logger.error(f"Error: {e}")
+        except Exception:
+            logger.exception("Fatal error in MQTT loop")
         finally:
             self.cleanup()
-    
+
     def cleanup(self):
-        """Clean up resources."""
         try:
             if self.client.is_connected():
+                self.client.publish(
+                    MQTT_AVAILABILITY_TOPIC,
+                    PAYLOAD_NOT_AVAILABLE,
+                    qos=1,
+                    retain=True,
+                )
                 self.client.disconnect()
             self._relay_off()
             GPIO.cleanup()
             logger.info("Cleanup complete")
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+        except Exception:
+            logger.exception("Error during cleanup")
 
 
 def _run_daemon():
-    """Run the MQTT daemon (default mode)."""
     logger.info("Starting Garage Door Opener (MQTT daemon)...")
-    controller = GarageDoorController()
-    controller.start()
+    GarageDoorController().start()
 
 
 def _run_trigger(action):
-    """Pulse the relay once and exit. No MQTT involved."""
-    logger.info(f"Triggering garage door ({action}) via CLI...")
-    controller = GarageDoorController()
+    """Pulse the relay once and exit. Bypasses MQTT entirely."""
+    logger.info("Triggering garage door (%s) via CLI...", action)
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+    GPIO.setup(GPIO_PIN, GPIO.OUT)
     try:
-        controller.trigger_door(action)
+        GPIO.output(GPIO_PIN, GPIO.LOW if RELAY_ACTIVE_LOW else GPIO.HIGH)
+        time.sleep(RELAY_ACTIVATION_TIME)
     finally:
-        controller.cleanup()
+        GPIO.output(GPIO_PIN, GPIO.HIGH if RELAY_ACTIVE_LOW else GPIO.LOW)
+        GPIO.cleanup()
+    logger.info("Relay pulse complete")
 
 
 def main():
-    """Main entry point."""
     parser = argparse.ArgumentParser(
         description="Garage door opener: MQTT daemon or one-shot CLI trigger."
     )
@@ -221,7 +312,7 @@ def main():
         nargs="?",
         default="toggle",
         choices=["open", "close", "toggle"],
-        help="Action label to log/report (default: toggle). The relay pulse is identical in all cases.",
+        help="Action label for logging (default: toggle). The relay pulse is identical.",
     )
 
     args = parser.parse_args()
