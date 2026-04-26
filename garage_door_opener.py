@@ -174,6 +174,16 @@ class GarageDoorController:
         self.publish_state(self.assumed_state)
 
     def on_message(self, client, userdata, msg):
+        # Ignore retained command messages: they're stale, left over from a
+        # previous session, and replaying them would (re)open the door at boot.
+        if msg.retain:
+            logger.info(
+                "Ignoring retained command on %s: %r",
+                msg.topic,
+                msg.payload[:64],
+            )
+            return
+
         try:
             payload = msg.payload.decode("utf-8").strip().lower()
         except Exception:
@@ -227,7 +237,7 @@ class GarageDoorController:
             "state_closing": STATE_CLOSING,
             "optimistic": False,
             "qos": 1,
-            "retain": True,
+            "retain": False,
             "device": {
                 "identifiers": [DEVICE_ID],
                 "name": DEVICE_NAME,
