@@ -41,6 +41,19 @@ Why the system is split today:
 - The ESP32-C3 project was added to provide sensor truth through a separate MQTT-connected device.
 - This keeps the actuator path simple while removing the main reliability gap in status reporting.
 
+## Why use the remote-button path instead of direct actuator control?
+
+This project intentionally triggers the opener through the same low-voltage button path a wall switch or remote uses, rather than directly modifying the opener's internal actuator electronics.
+
+The main reason is practical risk management:
+
+- I built this in a rental house and did not want to alter the core opener system in a way that might be hard to undo.
+- A dry-contact relay across the button terminals is easier to reverse and less invasive than board-level actuator manipulation.
+- If something fails, replacing an add-on relay or remote-side wiring is usually cheaper and safer than recovering from damage to the opener control board.
+- This path keeps a clear fallback: disconnect the automation layer and the original opener behavior remains intact.
+
+It may look indirect, but for rental constraints and fault tolerance, this approach is deliberate.
+
 ## Prerequisites
 
 - Home Assistant with the MQTT integration enabled, or another MQTT broker that your automations can reach.
