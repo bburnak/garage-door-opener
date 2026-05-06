@@ -1,58 +1,138 @@
-# Garage Door Opener — Home Assistant Integration
+# Garage Door Opener System
 
-A small Python application that runs on a Raspberry Pi and lets you trigger a garage door opener from Home Assistant via MQTT. The Pi drives a relay whose dry contacts are wired across the existing remote/wall-button pads, so a command from Home Assistant simulates a single button press.
+This repository currently contains two separate but complementary garage-door projects:
 
-```
-Home Assistant  →  MQTT broker  →  Raspberry Pi  →  GPIO17  →  Relay (COM/NO)  →  Button pads
-```
+1. A Raspberry Pi relay controller that acts like a button press when Home Assistant sends an MQTT command.
+2. An ESP32-C3 reed-switch sensor that reports the real door state over Wi-Fi and MQTT.
 
-## Hardware
+They are designed to work together, but they can also be deployed independently. Today the Raspberry Pi handles actuation and the ESP32-C3 handles sensing. The long-term direction is to replace the Raspberry Pi with an ESP32-based controller so one microcontroller can own both control and state reporting.
 
-### Wiring
+Detailed design notes live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The migration plan lives in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-| Raspberry Pi              | Relay module |
-| ------------------------- | ------------ |
-| Pin 1 (3.3V)              | VCC          |
-| Pin 6 (GND)               | GND          |
-| Pin 11 (GPIO17)           | IN           |
+## Project scope
 
-| Relay contact side | Connects to                          |
-| ------------------ | ------------------------------------ |
-| COM                | Garage button wire A                 |
-| NO                 | Garage button wire B                 |
-| NC                 | (unused)                             |
+Current scope:
 
-```
-Raspberry Pi                          Relay module
----------------                       ----------------------
-Pin 1  (3.3V)   --------------------> VCC
-Pin 6  (GND)    --------------------> GND
-Pin 11 (GPIO17) --------------------> IN
+| Component | Purpose | Works standalone | Current limitation |
+| --- | --- | --- | --- |
+| Raspberry Pi controller | Pulses a relay across the garage opener button terminals | Yes | It only knows an assumed door state unless a separate sensor is added |
+| ESP32-C3 sensor | Reads a magnetic reed switch and publishes the real door state | Yes | It reports state only; it does not actuate the opener |
 
-                                      COM ----- Remote button pad 1
-                                      NO  ----- Remote button pad 2
-                                      NC  ----- (not used)
+If you only want remote opening and closing, the Raspberry Pi path is enough. If you want accurate state reporting in Home Assistant, add the ESP32-C3 sensor. If you want both safe actuation and accurate status, run both together.
+
+## Architecture at a glance
+
+Current command path:
+
+```text
+Home Assistant -> MQTT broker -> Raspberry Pi -> GPIO17 -> Relay -> Garage button terminals
 ```
 
-### Notes
+Current state path:
 
-- Use a **3.3V-compatible** relay module (or one whose `IN` accepts 3.3V logic).
-- The relay must act as a **dry contact** — never feed Pi voltage into the button circuit.
-- The application energizes the relay for ~0.3s, mimicking one button tap.
-- Many relay boards are **active-LOW**; if yours is, set `RELAY_ACTIVE_LOW = True` in `config.py`.
+```text
+Garage door position -> Reed switch -> ESP32-C3 -> Wi-Fi -> MQTT broker -> Home Assistant
+```
 
-## Software setup
+Why the system is split today:
 
-### 1. Clone
+- The Raspberry Pi project was built first to solve actuation.
+- Its software can only report an assumed state based on the last command it sent.
+- The ESP32-C3 project was added to provide sensor truth through a separate MQTT-connected device.
+- This keeps the actuator path simple while removing the main reliability gap in status reporting.
+
+## Prerequisites
+
+- Home Assistant with the MQTT integration enabled, or another MQTT broker that your automations can reach.
+- A reachable local network for the Raspberry Pi and the ESP32-C3.
+- Python 3 on the Raspberry Pi, with permission to access GPIO.
+- PlatformIO for building and flashing the ESP32-C3 firmware.
+- A garage opener that can be safely triggered by shorting the same dry-contact input used by the wall button or remote button pads.
+
+## Hardware requirements
+
+### Raspberry Pi controller
+
+| Item | Notes |
+| --- | --- |
+| Raspberry Pi | Any model that can run Python and expose GPIO |
+| Relay module | Must be 3.3V logic compatible and used as a dry contact |
+| Jumper wires | For Pi-to-relay connections |
+| Access to opener button terminals | The relay connects across the existing low-voltage trigger pads |
+
+Controller wiring:
+
+| Raspberry Pi | Relay module |
+| --- | --- |
+| Pin 1 (3.3V) | VCC |
+| Pin 6 (GND) | GND |
+| Pin 11 (GPIO17) | IN |
+
+| Relay contact side | Connects to |
+| --- | --- |
+| COM | Garage button wire A |
+| NO | Garage button wire B |
+| NC | Unused |
+
+### ESP32-C3 status sensor
+
+| Item | Notes |
+| --- | --- |
+| ESP32-C3 board | Wi-Fi-capable microcontroller for the reed switch sensor |
+| Magnetic reed switch | Detects open or closed door position |
+| Magnet | Mounted so the switch reliably changes state with the door |
+| USB cable | For flashing and serial debugging |
+
+Sensor wiring:
+
+| Reed switch lead | ESP32-C3 |
+| --- | --- |
+| Lead 1 | GPIO21 |
+| Lead 2 | GND |
+
+The firmware uses the ESP32-C3 internal pull-up, so no external resistor is required for the default design.
+
+## Repository layout
+
+```text
+.
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── ROADMAP.md
+├── esp32-c3/
+│   ├── README.md
+│   ├── platformio.ini
+│   └── src/
+├── config.example.py
+├── config.py
+├── garage_door_opener.py
+├── requirements.txt
+└── README.md
+```
+
+## Start here
+
+Choose the path that matches your current goal:
+
+| Goal | Start here |
+| --- | --- |
+| Trigger the garage door from Home Assistant | Raspberry Pi controller setup below |
+| Add a real open or closed sensor | [esp32-c3/README.md](esp32-c3/README.md) |
+| Understand how both pieces fit together | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Follow the plan to move to an ESP32-only design | [docs/ROADMAP.md](docs/ROADMAP.md) |
+
+## Raspberry Pi controller setup
+
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/bburnak/garage-door-opener.git
+git clone <repository-url>
 cd garage-door-opener
 ```
 
 ### 2. Create a virtual environment
 
-On Raspberry Pi OS (Bookworm and newer), system-wide `pip install` is blocked by [PEP 668](https://peps.python.org/pep-0668/), so a venv is required:
+On Raspberry Pi OS Bookworm and newer, install dependencies inside a virtual environment:
 
 ```bash
 sudo apt-get update
@@ -61,119 +141,57 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Your shell prompt should now show `(.venv)`. To leave the venv later, run `deactivate`.
-
 ### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> **Note:** `RPi.GPIO` only installs on the Raspberry Pi itself. On other platforms, the install will fail — that's expected.
+`RPi.GPIO` installs only on a Raspberry Pi. That is expected.
 
-### 4. Configure
+### 4. Configure the controller
 
 ```bash
 cp config.example.py config.py
 ```
 
-Edit `config.py`:
+Edit `config.py` and set:
 
-- `MQTT_BROKER` — IP/hostname of your Home Assistant or MQTT broker
-- `MQTT_USERNAME` / `MQTT_PASSWORD` — MQTT credentials
-- `GPIO_PIN` — defaults to `17` (physical pin 11)
-- `RELAY_ACTIVE_LOW` — flip if the relay triggers on LOW
+- `MQTT_BROKER`
+- `MQTT_USERNAME`
+- `MQTT_PASSWORD`
+- `GPIO_PIN` if you are not using GPIO17
+- `RELAY_ACTIVE_LOW` if your relay energizes on a low signal
+- `TRAVEL_TIME` so Home Assistant transitions match your real door timing
 
 `config.py` is gitignored so credentials stay local.
 
-### 5. Run
-
-Run the MQTT daemon (this is what Home Assistant talks to):
+### 5. Run the MQTT daemon
 
 ```bash
 python garage_door_opener.py
-# equivalent to:
-python garage_door_opener.py daemon
 ```
 
-You should see the controller initialize the GPIO pin, connect to MQTT, and subscribe to the command topic.
+This starts the controller in daemon mode, publishes Home Assistant MQTT discovery, and listens for commands on the configured command topic.
 
-## Manual trigger over SSH (no MQTT)
+### 6. Optional manual trigger mode
 
-If you just want to pulse the relay directly — for example from an SSH session, a cron job, or while the MQTT daemon isn't running — use the `trigger` subcommand:
+If you want to pulse the relay directly without MQTT:
 
 ```bash
-cd ~/Documents/garage-door-opener
-source .venv/bin/activate
 python garage_door_opener.py trigger
-# or, with an explicit action label:
 python garage_door_opener.py trigger open
 python garage_door_opener.py trigger close
 python garage_door_opener.py trigger toggle
 ```
 
-If you don't want to activate the venv every time, call its Python directly:
+The label changes logging and reported intent, but the relay pulse is always the same physical action.
 
-```bash
-~/Documents/garage-door-opener/.venv/bin/python ~/Documents/garage-door-opener/garage_door_opener.py trigger
-```
+Do not run `trigger` while the daemon or systemd service is already using the GPIO pin.
 
-This pulses the relay once for `RELAY_ACTIVATION_TIME` seconds and exits. No MQTT broker is contacted.
+### 7. Optional systemd service
 
-The action argument (`open` / `close` / `toggle`) is purely a label for logging — the relay pulse itself is identical, just like pressing the wall button.
-
-> **Note:** Don't run `trigger` while the MQTT daemon (or systemd service) is also running — both will fight for the GPIO pin. Stop the service first (`sudo systemctl stop garage-door-opener`) or just use MQTT.
-
-## MQTT topics
-
-Topics are derived from `DEVICE_ID` in `config.py` (default: `garage_door_pi`):
-
-| Direction       | Topic                                                  | Payloads                                              |
-| --------------- | ------------------------------------------------------ | ----------------------------------------------------- |
-| HA → Pi (cmd)   | `garage_door/garage_door_pi/set`                       | `open`, `close`, `toggle`, `stop`                     |
-| Pi → HA (state) | `garage_door/garage_door_pi/state`                     | `open`, `closed`, `opening`, `closing`                |
-| Pi → HA (avail) | `garage_door/garage_door_pi/availability`              | `online` / `offline` (auto + LWT)                     |
-| Pi → HA (disc.) | `homeassistant/cover/garage_door_pi/<uid>/config`      | JSON discovery payload (published once on connect)    |
-
-## Home Assistant configuration
-
-### 1. Create an MQTT user for the Pi
-
-In Home Assistant: **Settings → People → Users → Add user**, e.g. username `garage_pi` with a strong password. Tick **Can only log in from the local network**. (You can also reuse an existing MQTT user if you have one.)
-
-Put those credentials in `config.py` on the Pi:
-
-```python
-MQTT_BROKER   = "homeassistant.local"
-MQTT_USERNAME = "garage_pi"
-MQTT_PASSWORD = "<your-password>"
-```
-
-### 2. That's it — the entity auto-appears
-
-When you start the daemon, it publishes an [MQTT discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) payload. Home Assistant creates the entity automatically:
-
-- Entity: `cover.garage_door_pi`
-- Friendly name: **Garage Door**
-- Device class: `garage` (renders open/close icons in the UI)
-- Reports `opening` → `open` (and `closing` → `closed`) using `TRAVEL_TIME` from `config.py`
-- Goes **unavailable** automatically if the Pi disconnects (LWT)
-
-No `configuration.yaml` edits are needed. You can verify under **Settings → Devices & services → MQTT → Devices**.
-
-### 3. Tune for your door
-
-In `config.py`:
-
-- `TRAVEL_TIME` — seconds it takes to fully open/close (default 15)
-- `INITIAL_STATE` — `"closed"` (default) or `"open"` for the assumed state on first start
-- `RELAY_ACTIVATION_TIME` — button press duration (default 0.3s)
-
-> **Note on state accuracy:** Without a real position sensor, the daemon *assumes* the door toggles between open/closed on each press. If someone uses the physical wall button or external remote, HA's state can drift. To fix this properly, add a magnetic reed switch to GPIO and report the real state — not implemented in this version.
-
-## Run as a service (optional)
-
-Create `/etc/systemd/system/garage-door-opener.service`:
+Example unit file:
 
 ```ini
 [Unit]
@@ -183,9 +201,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=baris
-WorkingDirectory=/home/baris/Documents/garage-door-opener
-ExecStart=/home/baris/Documents/garage-door-opener/.venv/bin/python /home/baris/Documents/garage-door-opener/garage_door_opener.py
+User=garage
+WorkingDirectory=/home/garage/garage-door-opener
+ExecStart=/home/garage/garage-door-opener/.venv/bin/python /home/garage/garage-door-opener/garage_door_opener.py
 Restart=always
 RestartSec=10
 
@@ -193,7 +211,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-Enable and start:
+Enable it with:
 
 ```bash
 sudo systemctl daemon-reload
@@ -202,31 +220,53 @@ sudo systemctl status garage-door-opener
 journalctl -u garage-door-opener -f
 ```
 
-## Troubleshooting
+## MQTT and Home Assistant behavior
 
-- **Relay never clicks** — toggle `RELAY_ACTIVE_LOW` in `config.py`; verify `GPIO_PIN` matches your wiring.
-- **MQTT connection refused** — confirm broker IP, credentials, and that port 1883 is reachable. Test with `mosquitto_sub -h <broker> -u <user> -P <pass> -t 'homeassistant/garage/#' -v`.
-- **Door doesn't move** — meter the relay COM/NO contacts while triggering; confirm the relay actually closes across your soldered button wires.
+### Raspberry Pi controller topics
 
-## Project layout
+These topics are derived from `DEVICE_ID` in `config.py`. With the default `garage_door_pi` value:
 
-```
-.
-├── garage_door_opener.py   # Main application (MQTT client + GPIO/relay control)
-├── config.example.py       # Template — copy to config.py and fill in
-├── config.py               # Local config (gitignored)
-├── requirements.txt        # paho-mqtt, RPi.GPIO
-├── .venv/                  # Python virtual environment (gitignored)
-├── .gitignore
-└── README.md
-```
+| Direction | Topic | Payloads |
+| --- | --- | --- |
+| Home Assistant to Pi | `garage_door/garage_door_pi/set` | `open`, `close`, `toggle`, `stop` |
+| Pi to Home Assistant | `garage_door/garage_door_pi/state` | `open`, `closed`, `opening`, `closing` |
+| Pi to Home Assistant | `garage_door/garage_door_pi/availability` | `online`, `offline` |
+| Pi to Home Assistant | `homeassistant/cover/garage_door_pi/<unique_id>/config` | MQTT discovery JSON |
+
+The Raspberry Pi publishes a Home Assistant `cover` entity automatically. Without a real sensor, that entity uses assumed state based on the last command it sent.
+
+### ESP32-C3 sensor topics
+
+By default the ESP32-C3 firmware publishes:
+
+| Direction | Topic | Payloads |
+| --- | --- | --- |
+| ESP32-C3 to Home Assistant | `garage_door/state` | `open`, `closed` |
+| ESP32-C3 to Home Assistant | `garage_door/availability` | `online`, `offline` |
+| ESP32-C3 to Home Assistant | `homeassistant/binary_sensor/garage_door_sensor/config` | MQTT discovery JSON |
+
+That device appears in Home Assistant as a `binary_sensor` and provides the actual sensor truth.
+
+## ESP32-C3 sensor setup
+
+The ESP32-C3 setup, flash workflow, Windows USB notes, and serial validation steps live in [esp32-c3/README.md](esp32-c3/README.md).
+
+## Future direction
+
+The target architecture is an ESP32-based controller that can do both of the following on one device:
+
+- Read the real garage door position from a sensor.
+- Safely actuate the opener through an isolated relay output.
+
+That would remove the Raspberry Pi from the deployment while keeping MQTT and Home Assistant integration intact. The staged plan is documented in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Safety
 
-- Always use the relay as a dry contact across the existing button wires.
-- Never connect Pi 3.3V/5V into the garage button circuit directly.
-- Keep the original wall button or remote available as a manual override.
-- Test with the door track clear before automating.
+- Use the relay only as a dry contact across the existing garage-button wires.
+- Never inject Raspberry Pi or ESP32 supply voltage into the opener button circuit.
+- Keep a physical wall button or remote available as a manual override.
+- Test automations only when the door path is clear.
+- If your opener has safety beam, lockout, or wall-console requirements, preserve them exactly.
 
 ## License
 

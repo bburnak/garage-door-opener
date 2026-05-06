@@ -5,6 +5,7 @@
 .venv/
 venv/
 .env
+.pio/
 
 # Local configuration with MQTT credentials (use config.example.py as template)
 config.py
