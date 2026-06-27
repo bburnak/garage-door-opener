@@ -17,6 +17,7 @@ static PubSubClient mqtt_client(wifi_client);
 
 static bool mqtt_connected = false;
 static bool wifi_connected = false;
+static uint32_t last_mqtt_ok_ms = 0;  // tracks last successful MQTT connection; used by restart watchdog
 
 // ============================================================================
 // Helper Functions
@@ -78,18 +79,29 @@ static void maintain_wifi()
     {
         if (!wifi_connected)
         {
-            Serial.println("WiFi reconnected.");
+            Serial.print("WiFi reconnected. IP: ");
+            Serial.println(WiFi.localIP());
             wifi_connected = true;
         }
+        return;
     }
-    else
+
+    if (wifi_connected)
     {
-        if (wifi_connected)
-        {
-            Serial.println("WiFi disconnected.");
-            wifi_connected = false;
-            mqtt_connected = false;
-        }
+        Serial.println("WiFi disconnected.");
+        wifi_connected = false;
+        mqtt_connected = false;
+    }
+
+    // Actively retry WiFi.begin() every 30s — handles the case where the
+    // router comes up after the ESP32 already gave up on the initial attempt.
+    static uint32_t last_wifi_attempt_ms = 0;
+    if ((millis() - last_wifi_attempt_ms) > 30000)
+    {
+        last_wifi_attempt_ms = millis();
+        Serial.println("WiFi: retrying connection...");
+        WiFi.disconnect(true);
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
 }
 
@@ -164,6 +176,7 @@ static void reconnect_mqtt()
     {
         Serial.println("MQTT connected");
         mqtt_connected = true;
+        last_mqtt_ok_ms = millis();
 
         // Announce we are online
         mqtt_client.publish(MQTT_TOPIC_AVAILABILITY, PAYLOAD_ONLINE, true);
@@ -269,6 +282,8 @@ void setup()
 
     // Setup MQTT
     setup_mqtt();
+
+    last_mqtt_ok_ms = millis();
 }
 
 // ============================================================================
@@ -302,9 +317,18 @@ void loop()
 
     if (mqtt_connected && (now - last_publish_ms) > MQTT_HEARTBEAT_INTERVAL_MS)
     {
-        // Periodic heartbeat to confirm we're still alive
         mqtt_client.publish(MQTT_TOPIC_STATE, door_state_from_raw(stable_raw), true);
+        last_mqtt_ok_ms = now;
         last_publish_ms = now;
+    }
+
+    // Restart if MQTT has been unreachable for 5 minutes — recovers from
+    // stuck WiFi stacks and broker outages that survive WiFi reconnects.
+    if (!mqtt_connected && (now - last_mqtt_ok_ms) > 300000)
+    {
+        Serial.println("MQTT offline >5 min, restarting...");
+        delay(100);
+        ESP.restart();
     }
 
     delay(5);
