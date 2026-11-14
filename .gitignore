@@ -9,3 +9,6 @@ venv/
 
 # Local configuration with MQTT credentials (use config.example.py as template)
 config.py
+
+# ESP32 controller credentials (use esp32-c3-controller/src/config.example.h as template)
+esp32-c3-controller/src/config.h
