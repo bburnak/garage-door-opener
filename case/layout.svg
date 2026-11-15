@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 880" width="1000" height="880" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>Garage controller case: part placement</title>
+  <desc>Top view and front section of the 3D-printed case. The bare LiftMaster 893LM board sits in the left pocket with buttons up. The 1-channel 3.3V optocoupler relay module lies along the front-right with its NO/COM/NC terminals facing the remote and its DC+/DC-/IN terminals at the right end. The ESP32-C3 sits back-right with its USB-C port facing the hole in the right wall. Drawn to scale at 5 pixels per millimetre from garage_case.py.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="880" fill="#ffffff"/>
+
+  <text x="500" y="32" text-anchor="middle" font-size="20" font-weight="600" fill="#1f2328">Case layout: where each part goes</text>
+  <text x="500" y="54" text-anchor="middle" font-size="12" fill="#57606a">Drawn to scale from case/garage_case.py (5 px = 1 mm). All sizes are estimates until you measure your parts.</text>
+
+  <!-- ============================ TOP VIEW ============================ -->
+  <text x="90" y="80" font-size="14" font-weight="600" fill="#1f2328">1. Top view (lid off)</text>
+  <text x="484" y="80" text-anchor="middle" font-size="11" fill="#57606a" letter-spacing="2">BACK</text>
+
+  <!-- outer shell + cavity -->
+  <rect x="90" y="90" width="788" height="321" rx="3" fill="#c9ced6" stroke="#57606a" stroke-width="1.5"/>
+  <rect x="102" y="102" width="764" height="297" fill="#f6f8fa" stroke="#8c959f" stroke-width="1"/>
+  <!-- USB opening in right wall -->
+  <rect x="865.5" y="145" width="13" height="70" fill="#ffffff" stroke="#8c959f" stroke-width="1"/>
+
+  <!-- screw posts -->
+  <g fill="#c9ced6" stroke="#57606a" stroke-width="1.2">
+    <circle cx="118.25" cy="118.25" r="16.25"/>
+    <circle cx="849.75" cy="118.25" r="16.25"/>
+    <circle cx="118.25" cy="382.75" r="16.25"/>
+    <circle cx="849.75" cy="382.75" r="16.25"/>
+  </g>
+  <g fill="#ffffff" stroke="#57606a" stroke-width="1">
+    <circle cx="118.25" cy="118.25" r="5.5"/>
+    <circle cx="849.75" cy="118.25" r="5.5"/>
+    <circle cx="118.25" cy="382.75" r="5.5"/>
+    <circle cx="849.75" cy="382.75" r="5.5"/>
+  </g>
+
+  <!-- locating ribs (5 mm tall) -->
+  <g fill="none" stroke="#a5acb5" stroke-width="6">
+    <rect x="145" y="150" width="391" height="201"/>
+    <rect x="562" y="250" width="261" height="141"/>
+    <rect x="639.5" y="110" width="183.5" height="140"/>
+  </g>
+  <!-- notch in ESP rib for the USB plug -->
+  <rect x="818.5" y="145" width="9" height="70" fill="#f6f8fa"/>
+
+  <!-- 893LM bare board -->
+  <rect x="150.5" y="155.5" width="380" height="190" rx="8" fill="#2f7d4f" stroke="#1d5235" stroke-width="1.5"/>
+  <text x="250" y="190" text-anchor="middle" font-size="15" font-weight="600" fill="#ffffff">LiftMaster 893LM board</text>
+  <text x="250" y="208" text-anchor="middle" font-size="11" fill="#d8f0e0">shell removed, buttons facing up</text>
+  <circle cx="250" cy="280" r="45" fill="none" stroke="#d8f0e0" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="250" y="277" text-anchor="middle" font-size="11" fill="#d8f0e0">battery</text>
+  <text x="250" y="291" text-anchor="middle" font-size="11" fill="#d8f0e0">(leave fitted)</text>
+  <g fill="#e6e6e6" stroke="#1d5235" stroke-width="1.5">
+    <circle cx="350" cy="200" r="16"/>
+    <circle cx="350" cy="255" r="16"/>
+  </g>
+  <circle cx="350" cy="310" r="16" fill="#ffd33d" stroke="#9a6700" stroke-width="2"/>
+  <!-- solder pads of the wired button -->
+  <g fill="#d4a72c" stroke="#9a6700" stroke-width="1">
+    <circle cx="385" cy="298" r="4.5"/>
+    <circle cx="385" cy="322" r="4.5"/>
+  </g>
+  <text x="400" y="246" font-size="11" fill="#ffffff">the button that</text>
+  <text x="400" y="260" font-size="11" fill="#ffffff">opens your door:</text>
+  <text x="400" y="274" font-size="11" fill="#ffffff">solder 2 wires</text>
+  <text x="400" y="288" font-size="11" fill="#ffffff">across its pads</text>
+
+  <!-- relay module: 50 x 26 mm, screw terminals at both ends -->
+  <rect x="567.5" y="255.5" width="250" height="130" rx="4" fill="#2f5d9e" stroke="#1b3a66" stroke-width="1.5"/>
+  <!-- output terminals (left end, toward the remote) -->
+  <rect x="570" y="278" width="34" height="84" rx="2" fill="#2da44e" stroke="#1b3a66" stroke-width="1"/>
+  <g fill="#c9ced6" stroke="#1b3a66" stroke-width="1">
+    <circle cx="580" cy="292" r="6"/>
+    <circle cx="580" cy="320" r="6"/>
+    <circle cx="580" cy="348" r="6"/>
+  </g>
+  <g font-size="8.5" fill="#ffffff" text-anchor="start">
+    <text x="588" y="295">NO</text>
+    <text x="588" y="323">COM</text>
+    <text x="588" y="351">NC</text>
+  </g>
+  <!-- LEDs -->
+  <circle cx="618" cy="268" r="4" fill="#ff6b6b" stroke="#1b3a66" stroke-width="1"/>
+  <circle cx="632" cy="268" r="4" fill="#7ee787" stroke="#1b3a66" stroke-width="1"/>
+  <!-- relay cube -->
+  <rect x="640" y="285" width="100" height="80" rx="3" fill="#4f8ad6" stroke="#1b3a66" stroke-width="1.2"/>
+  <text x="690" y="322" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">Relay</text>
+  <text x="690" y="338" text-anchor="middle" font-size="10" fill="#e3eefc">19 mm tall</text>
+  <!-- H/L trigger jumper -->
+  <g fill="#24292f">
+    <rect x="752" y="366" width="7" height="7"/>
+    <rect x="762" y="366" width="7" height="7"/>
+    <rect x="772" y="366" width="7" height="7"/>
+  </g>
+  <rect x="761" y="364" width="20" height="11" rx="2" fill="#ffd33d" fill-opacity="0.85" stroke="#9a6700" stroke-width="1"/>
+  <text x="765" y="360" text-anchor="middle" font-size="8" fill="#ffffff">L · H</text>
+  <!-- input terminals (right end, toward the ESP32) -->
+  <rect x="783" y="278" width="32" height="84" rx="2" fill="#2da44e" stroke="#1b3a66" stroke-width="1"/>
+  <g fill="#c9ced6" stroke="#1b3a66" stroke-width="1">
+    <circle cx="792" cy="292" r="6"/>
+    <circle cx="792" cy="320" r="6"/>
+    <circle cx="792" cy="348" r="6"/>
+  </g>
+  <g font-size="8" fill="#ffffff" text-anchor="start">
+    <text x="799" y="295">DC+</text>
+    <text x="799" y="323">DC−</text>
+    <text x="799" y="351">IN</text>
+  </g>
+
+  <!-- ESP32-C3 -->
+  <rect x="645" y="115.5" width="172.5" height="129" rx="4" fill="#24292f" stroke="#000000" stroke-width="1.5"/>
+  <rect x="672" y="140" width="70" height="60" rx="2" fill="#57606a" stroke="#000000" stroke-width="1"/>
+  <text x="707" y="168" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">ESP32</text>
+  <text x="707" y="184" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">-C3</text>
+  <!-- USB-C port on right edge -->
+  <rect x="789.5" y="166" width="32" height="28" rx="6" fill="#afb8c1" stroke="#000000" stroke-width="1"/>
+  <text x="776" y="160" text-anchor="middle" font-size="9" fill="#d0d7de">USB-C →</text>
+  <!-- pins (bottom edge, toward relay) -->
+  <g fill="#d4a72c" stroke="#000000" stroke-width="1">
+    <rect x="741" y="232" width="8" height="8"/>
+    <rect x="761" y="232" width="8" height="8"/>
+    <rect x="781" y="232" width="8" height="8"/>
+  </g>
+  <g font-size="8.5" fill="#ffffff" text-anchor="middle">
+    <text x="745" y="226">IO4</text>
+    <text x="765" y="226">GND</text>
+    <text x="785" y="226">3V3</text>
+  </g>
+
+  <!-- ESP -> relay input wires (lie over the relay board) -->
+  <g fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="785,240 785,292 786,292" stroke="#cf222e"/>
+    <polyline points="765,240 765,320 786,320" stroke="#24292f"/>
+    <polyline points="745,240 745,348 786,348" stroke="#1a7f37"/>
+  </g>
+  <!-- relay NO/COM -> remote button pads (run over the 5 mm ribs) -->
+  <g fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="574,292 548,292 548,298 389,298" stroke="#bf8700"/>
+    <polyline points="574,320 548,320 548,322 389,322" stroke="#fb8f44"/>
+  </g>
+
+  <!-- USB cable leaving the case -->
+  <rect x="823" y="170" width="70" height="20" rx="4" fill="#57606a" stroke="#24292f" stroke-width="1"/>
+  <path d="M893,180 L985,180" fill="none" stroke="#24292f" stroke-width="5" stroke-linecap="round"/>
+  <text x="940" y="164" text-anchor="middle" font-size="11" fill="#1f2328">USB-C power</text>
+  <text x="940" y="205" text-anchor="middle" font-size="10" fill="#57606a">only cable out</text>
+
+  <text x="484" y="428" text-anchor="middle" font-size="11" fill="#57606a" letter-spacing="2">FRONT</text>
+  <!-- overall dimensions -->
+  <line x1="90" y1="444" x2="878" y2="444" stroke="#57606a" stroke-width="1" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="484" y="460" text-anchor="middle" font-size="12" fill="#1f2328">158 mm outside</text>
+  <line x1="72" y1="90" x2="72" y2="411" stroke="#57606a" stroke-width="1" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="62" y="250" text-anchor="middle" font-size="12" fill="#1f2328" transform="rotate(-90 62 250)">64 mm</text>
+
+  <!-- ============================ FRONT SECTION ============================ -->
+  <text x="90" y="500" font-size="14" font-weight="600" fill="#1f2328">2. Front view, cut open (front wall removed)</text>
+
+  <!-- lid, exploded upward and already flipped -->
+  <rect x="90" y="520" width="788" height="12" fill="#c9ced6" stroke="#57606a" stroke-width="1.2"/>
+  <rect x="103.5" y="532" width="6" height="12.5" fill="#c9ced6" stroke="#57606a" stroke-width="1"/>
+  <rect x="858.5" y="532" width="6" height="12.5" fill="#c9ced6" stroke="#57606a" stroke-width="1"/>
+  <text x="484" y="530" text-anchor="middle" font-size="10" fill="#1f2328">lid (flipped so its lip points down), 4 × M2.5 screws into the corner posts</text>
+  <line x1="118" y1="548" x2="118" y2="568" stroke="#57606a" stroke-width="1" marker-end="url(#arr)"/>
+  <line x1="850" y1="548" x2="850" y2="568" stroke="#57606a" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- base: walls and floor -->
+  <g fill="#c9ced6" stroke="#57606a" stroke-width="1.2">
+    <rect x="90" y="578" width="12" height="122"/>
+    <rect x="866" y="578" width="12" height="122"/>
+    <rect x="90" y="688" width="788" height="12"/>
+  </g>
+  <!-- USB hole in right wall (8 mm tall from floor) -->
+  <rect x="865.5" y="648" width="13" height="40" fill="#ffffff" stroke="#8c959f" stroke-width="1"/>
+  <!-- corner posts (behind) -->
+  <g fill="#e1e4e8" stroke="#8c959f" stroke-width="1" stroke-dasharray="4 3">
+    <rect x="102" y="578" width="32.5" height="110"/>
+    <rect x="833.5" y="578" width="32.5" height="110"/>
+  </g>
+  <!-- ribs -->
+  <g fill="#a5acb5">
+    <rect x="142" y="663" width="6" height="25"/>
+    <rect x="533" y="663" width="6" height="25"/>
+    <rect x="559" y="663" width="6" height="25"/>
+    <rect x="820" y="663" width="6" height="25"/>
+  </g>
+
+  <!-- remote board in section -->
+  <rect x="150.5" y="678" width="380" height="8" fill="#2f7d4f" stroke="#1d5235" stroke-width="1"/>
+  <rect x="205" y="660" width="90" height="18" rx="2" fill="#d0d7de" stroke="#57606a" stroke-width="1"/>
+  <text x="250" y="672" text-anchor="middle" font-size="9" fill="#1f2328">battery</text>
+  <rect x="335" y="666" width="30" height="12" rx="2" fill="#e6e6e6" stroke="#1d5235" stroke-width="1"/>
+  <text x="250" y="652" text-anchor="middle" font-size="11" fill="#1f2328">893LM board, ~8 mm</text>
+
+  <!-- relay in section (ESP32 sits behind its right half) -->
+  <rect x="567.5" y="678" width="250" height="8" fill="#2f5d9e" stroke="#1b3a66" stroke-width="1"/>
+  <rect x="640" y="583" width="100" height="95" rx="3" fill="#4f8ad6" stroke="#1b3a66" stroke-width="1"/>
+  <rect x="570" y="656" width="34" height="22" fill="#2da44e" stroke="#1b3a66" stroke-width="1"/>
+  <rect x="783" y="656" width="32" height="22" fill="#2da44e" stroke="#1b3a66" stroke-width="1"/>
+  <text x="690" y="628" text-anchor="middle" font-size="11" fill="#ffffff">Relay</text>
+  <text x="690" y="642" text-anchor="middle" font-size="9" fill="#e3eefc">(ESP32 behind)</text>
+
+  <!-- USB cable in section -->
+  <rect x="823" y="656" width="70" height="20" rx="4" fill="#57606a" stroke="#24292f" stroke-width="1"/>
+  <path d="M893,666 L985,666" fill="none" stroke="#24292f" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- height dims -->
+  <line x1="72" y1="578" x2="72" y2="700" stroke="#57606a" stroke-width="1" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="62" y="639" text-anchor="middle" font-size="12" fill="#1f2328" transform="rotate(-90 62 639)">24 mm</text>
+  <text x="484" y="722" text-anchor="middle" font-size="10" fill="#57606a">grey bars = 5 mm locating ribs; dashed = corner screw posts</text>
+
+  <!-- ============================ STEPS ============================ -->
+  <g font-size="12.5" fill="#1f2328">
+    <text x="90" y="760" font-size="14" font-weight="600">Assembly order</text>
+    <text x="90" y="782">1. Solder two wires across the pads of the remote button you use for the door. Drop the bare board in the left pocket, buttons up.</text>
+    <text x="90" y="802">2. Relay goes along the front, NO/COM/NC end toward the remote. Screw the two button wires into NO and COM. Set the jumper to H.</text>
+    <text x="90" y="822">3. ESP32-C3 goes back-right, USB-C facing the right wall. Wire 3V3→DC+, GND→DC−, GPIO4→IN on the relay's other end.</text>
+    <text x="90" y="842">4. Stick each board down with double-sided foam tape (the ribs only stop sliding). Plug in USB-C through the hole.</text>
+    <text x="90" y="862">5. Flip the lid so the lip points down, set it on, and drive 4 × M2.5 self-tapping screws into the posts.</text>
+  </g>
+</svg>

@@ -2,7 +2,8 @@
 Parametric 3D-printable case for the ESP32-C3 garage door controller.
 
 Holds, side by side in one box:
-  * LiftMaster 893LM 3-button remote (relay contacts are wired across a button)
+  * LiftMaster 893LM 3-button remote, bare board with its plastic shell removed
+    (relay contacts are soldered across one button; keep the battery fitted)
   * ESP32-C3 Mini (USB-C power cable is the only external connection)
   * 1-channel relay module
 
@@ -23,9 +24,9 @@ import os
 # ----------------------------------------------------------------------------
 # Component dimensions (mm) - MEASURE AND EDIT THESE
 # ----------------------------------------------------------------------------
-REMOTE_L, REMOTE_W, REMOTE_T = 95.0, 48.0, 18.0   # 893LM remote (length, width, thickness)
+REMOTE_L, REMOTE_W, REMOTE_T = 76.0, 38.0, 8.0    # bare 893LM board out of its shell, incl. buttons + battery
 ESP_L, ESP_W = 34.5, 25.8                         # ESP32-C3 Mini PCB (USB-C end is the short edge)
-RELAY_L, RELAY_W, RELAY_H = 34.0, 26.0, 19.0      # relay board incl. relay height
+RELAY_L, RELAY_W, RELAY_H = 50.0, 26.0, 19.0      # 1-ch 3.3V optocoupler relay board (screw terminals both ends), incl. relay height
 
 # ----------------------------------------------------------------------------
 # Case parameters (mm)
@@ -51,6 +52,18 @@ USB_W, USB_H = 14.0, 8.0   # cutout for USB-C cable plug in the right end wall
 LIP_T = 1.2                # lid locating lip thickness
 LIP_H = 2.5                # lid locating lip height
 LIP_CLEAR = 0.3
+
+GRILLE_W = 2.4        # slot width in the vent grilles (lid + floor)
+GRILLE_PITCH = 5.0    # centre-to-centre slot spacing
+GRILLE_EDGE = 6.0     # solid margin between slots and the outer edge (keeps the lid lip intact)
+GRILLE_POST_Y = 11.0  # slots near a screw post stop this far from the end wall
+FLOOR_GRILLE = True   # also slot the floor under the relay/ESP column
+
+LOGO = True           # engrave the closed-garage icon in the lid's outer face
+LOGO_W, LOGO_H = 34.0, 30.0   # overall icon size
+LOGO_STROKE = 2.4     # outline thickness
+LOGO_DEPTH = 0.8      # engraving depth
+LOGO_SLATS = 3        # door slat grooves inside the house outline
 
 EXPORT_DIR = None     # e.g. r"C:\Users\baris\Desktop"  (None = don't export)
 
@@ -98,6 +111,41 @@ def add(target, tool):
 
 def cut(target, tool):
     boolean(target, tool, 'DIFFERENCE')
+
+
+def prism(name, pts, z0, z1):
+    """Convex polygon (CCW list of (x, y)) extruded from z0 to z1."""
+    import bmesh
+    n = len(pts)
+    verts = [(x, y, z0) for x, y in pts] + [(x, y, z1) for x, y in pts]
+    faces = [tuple(range(n - 1, -1, -1)), tuple(range(n, 2 * n))]
+    faces += [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(mesh)
+    bm.free()
+    return _finish(obj, name)
+
+
+def grille(target, name, xa, xb, ya, yb, z0, z1, y_off=0.0):
+    """Slots running along Y, spread over x = xa..xb. Slots near a screw post are
+    shortened so they never touch the post or the lid lip notch."""
+    post_clear = POST_D / 2 + LIP_CLEAR + 0.2 + 1.5 + GRILLE_W / 2
+    x = xa + GRILLE_W / 2
+    i = 0
+    while x + GRILLE_W / 2 <= xb:
+        near = any(abs(x - px) < post_clear for px, _ in post_pts)
+        lo, hi = (GRILLE_POST_Y, OY - GRILLE_POST_Y) if near else (ya, yb)
+        cut(target, box(f"{name}{i}", x - GRILLE_W / 2, y_off + lo, z0,
+                        x + GRILLE_W / 2, y_off + hi, z1))
+        x += GRILLE_PITCH
+        i += 1
 
 
 def frame(base, name, x0, y0, x1, y1, z0, z1):
@@ -151,24 +199,34 @@ rel_x0 = col_x0
 base = box("GarageCase_Base", 0, 0, 0, OX, OY, OZ)
 cut(base, box("cavity", ix, iy, iz, ix + inner_x, iy + inner_y, OZ + 1))
 
-frame(base, "remote", rem_x0, rem_y0, rem_x0 + rem_w, rem_y0 + rem_h, iz - 0.5, iz + RIB_H)
-frame(base, "relay", rel_x0, rel_y0, rel_x0 + rel_w, rel_y0 + rel_h, iz - 0.5, iz + RIB_H)
-frame(base, "esp", esp_x0, esp_y0, esp_x0 + esp_w, esp_y0 + esp_h, iz - 0.5, iz + RIB_H)
-
-# Screw posts in the four corners
 post_pts = [
     (ix + POST_D / 2, iy + POST_D / 2),
     (ix + inner_x - POST_D / 2, iy + POST_D / 2),
     (ix + POST_D / 2, iy + inner_y - POST_D / 2),
     (ix + inner_x - POST_D / 2, iy + inner_y - POST_D / 2),
 ]
+
+# Floor vent slots under the relay/ESP column (cut before the ribs go on). The
+# remote pocket stays solid so its foam tape has something to stick to.
+if FLOOR_GRILLE:
+    grille(base, "floorslot", col_x0, OX - GRILLE_EDGE, GRILLE_EDGE, OY - GRILLE_EDGE,
+           -1, iz + 0.01)
+
+frame(base, "remote", rem_x0, rem_y0, rem_x0 + rem_w, rem_y0 + rem_h, iz - 0.5, iz + RIB_H)
+frame(base, "relay", rel_x0, rel_y0, rel_x0 + rel_w, rel_y0 + rel_h, iz - 0.5, iz + RIB_H)
+frame(base, "esp", esp_x0, esp_y0, esp_x0 + esp_w, esp_y0 + esp_h, iz - 0.5, iz + RIB_H)
+# Gap in the ESP pocket's right rib so the USB-C plug can reach the board
+esp_cy = esp_y0 + esp_h / 2
+cut(base, box("usb_notch", esp_x0 + esp_w - 0.1, esp_cy - USB_W / 2, iz,
+              esp_x0 + esp_w + RIB_T + 0.1, esp_cy + USB_W / 2, iz + RIB_H + 1))
+
+# Screw posts in the four corners
 for i, (px, py) in enumerate(post_pts):
     add(base, cyl(f"post{i}", px, py, iz - 0.5, OZ, POST_D))
 for i, (px, py) in enumerate(post_pts):
     cut(base, cyl(f"pilot{i}", px, py, OZ - 10, OZ + 1, PILOT_D, 24))
 
 # USB-C cable opening in the right end wall, centred on the ESP board
-esp_cy = esp_y0 + esp_h / 2
 cut(base, box("usb", OX - WALL - 1, esp_cy - USB_W / 2, iz,
               OX + 1, esp_cy + USB_W / 2, iz + USB_H))
 
@@ -195,6 +253,38 @@ add(lid, ring)
 for i, (px, py) in enumerate(post_pts):
     cut(lid, cyl(f"hole{i}", px, lid_y + py, -1, LID_T + 1, LID_HOLE_D, 24))
     cut(lid, cyl(f"cbore{i}", px, lid_y + py, -1, CBORE_DEPTH, CBORE_D, 32))
+
+# Vent grille over the relay/ESP column
+grille(lid, "lidslot", col_x0, OX - GRILLE_EDGE, GRILLE_EDGE, OY - GRILLE_EDGE,
+       -1, LID_T + 1, y_off=lid_y)
+
+# Closed-garage icon (house outline + door slats), engraved into the outer face
+# (the face on the print bed). Symmetric left/right, so flipping the lid about
+# its Y axis when assembling leaves the roof pointing up.
+if LOGO:
+    hw, s = LOGO_W / 2, LOGO_STROKE
+    eave = LOGO_H * 0.63                      # height of the roof/wall corner
+    slope = (LOGO_H - eave) / hw
+    drop = s * (1 + slope ** 2) ** 0.5        # vertical offset of the inner roof line
+    iw = hw - s
+    outer = [(-hw, 0), (hw, 0), (hw, eave), (0, LOGO_H), (-hw, eave)]
+    inner = [(-iw, s), (iw, s), (iw, eave + slope * s - drop),
+             (0, LOGO_H - drop), (-iw, eave + slope * s - drop)]
+    lcx = rem_x0 + rem_w / 2
+    lcy = lid_y + OY / 2 - LOGO_H / 2
+    mv = lambda pts: [(lcx + x, lcy + y) for x, y in pts]
+    z0, z1 = -1, LOGO_DEPTH
+    mark = prism("logo_outer", mv(outer), z0, z1)
+    cut(mark, prism("logo_inner", mv(inner), z0 - 1, z1 + 1))
+    # slats: evenly spaced grooves between the floor line and the roof corner
+    top = inner[2][1]
+    gap = (top - s) / (LOGO_SLATS + 1)
+    bar = s * 0.6
+    for k in range(LOGO_SLATS):
+        yc = s + gap * (k + 1)
+        add(mark, box(f"slat{k}", lcx - iw - 0.1, lcy + yc - bar / 2, z0,
+                      lcx + iw + 0.1, lcy + yc + bar / 2, z1))
+    cut(lid, mark)
 
 # ----------------------------------------------------------------------------
 # Optional STL export
