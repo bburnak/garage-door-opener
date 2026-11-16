@@ -1,7 +1,7 @@
 """
 Parametric 3D-printable case for the ESP32-C3 garage door controller.
 
-Holds, side by side in one box:
+Holds, in a compact two-row layout (remote + ESP on top, relay below):
   * LiftMaster 893LM 3-button remote, bare board with its plastic shell removed
     (relay contacts are soldered across one button; keep the battery fitted)
   * ESP32-C3 Mini (USB-C power cable is the only external connection)
@@ -24,9 +24,11 @@ import os
 # ----------------------------------------------------------------------------
 # Component dimensions (mm) - MEASURE AND EDIT THESE
 # ----------------------------------------------------------------------------
-REMOTE_L, REMOTE_W, REMOTE_T = 76.0, 38.0, 8.0    # bare 893LM board out of its shell, incl. buttons + battery
-ESP_L, ESP_W = 34.5, 25.8                         # ESP32-C3 Mini PCB (USB-C end is the short edge)
-RELAY_L, RELAY_W, RELAY_H = 50.0, 26.0, 19.0      # 1-ch 3.3V optocoupler relay board (screw terminals both ends), incl. relay height
+REMOTE_L, REMOTE_W, REMOTE_T = 57.0, 37.0, 8.0    # bare 893LM board out of its shell, incl. buttons + battery
+ESP_L, ESP_W = 23.0, 18.0                         # ESP32-C3 Mini PCB (USB-C end is the short edge)
+RELAY_L, RELAY_W, RELAY_H = 70.0, 17.0, 19.0
+ESP_BED_H = 4.0      # raised bed under the ESP (mounted upside down, USB-C/components face down)
+ESP_PIN_H = 9.0      # PCB + pin headers sticking up, measured from the bed - MEASURE      # 1-ch 3.3V optocoupler relay board (screw terminals both ends), incl. relay height
 
 # ----------------------------------------------------------------------------
 # Case parameters (mm)
@@ -39,7 +41,7 @@ RIB_T = 1.2           # thickness of the little walls that locate each part
 RIB_H = 5.0           # height of those walls
 END_MARGIN = 8.0      # space at left/right ends (holds the screw posts)
 Y_PAD = 1.0           # extra room front/back
-COMP_GAP = 4.0        # gap between remote and electronics column
+COMP_GAP = 2.0        # gap between remote and ESP
 HEADROOM = 3.0        # air above the tallest component
 
 POST_D = 6.5          # screw post diameter
@@ -171,27 +173,31 @@ rem_w, rem_h = REMOTE_L + 2 * CLEAR, REMOTE_W + 2 * CLEAR
 esp_w, esp_h = ESP_L + 2 * CLEAR, ESP_W + 2 * CLEAR
 rel_w, rel_h = RELAY_L + 2 * CLEAR, RELAY_W + 2 * CLEAR
 
-col_w = max(esp_w, rel_w)
-stack_h = esp_h + rel_h + 3 * RIB_T
-inner_x = END_MARGIN + RIB_T + rem_w + RIB_T + COMP_GAP + RIB_T + col_w + RIB_T + END_MARGIN
-inner_y = max(rem_h + 2 * RIB_T, stack_h) + 2 * Y_PAD
-inner_z = max(REMOTE_T, RELAY_H) + HEADROOM
+# Compact two-row layout:
+#   back row : remote (left) + ESP32-C3 (right, USB-C faces the right wall)
+#   front row: relay board, left-aligned under the remote
+row1_h = max(rem_h, esp_h)
+stack_h = rel_h + row1_h + 4 * RIB_T
+inner_x = END_MARGIN + RIB_T + rem_w + RIB_T + COMP_GAP + RIB_T + esp_w + RIB_T + END_MARGIN
+inner_x = max(inner_x, END_MARGIN + RIB_T + rel_w + RIB_T + END_MARGIN)
+inner_y = stack_h + 2 * Y_PAD
+inner_z = max(REMOTE_T, RELAY_H, ESP_BED_H + ESP_PIN_H) + HEADROOM
 
 OX, OY, OZ = inner_x + 2 * WALL, inner_y + 2 * WALL, FLOOR + inner_z
 ix, iy, iz = WALL, WALL, FLOOR   # inner origin
 
-# Remote pocket (left, centred in Y)
-rem_x0 = ix + END_MARGIN + RIB_T
-rem_y0 = iy + (inner_y - rem_h) / 2
-# Electronics column (right): ESP at the back (high Y), relay in front
-col_x0 = rem_x0 + rem_w + RIB_T + COMP_GAP + RIB_T
-col_x1 = col_x0 + col_w
 stack_y0 = iy + (inner_y - stack_h) / 2
+# Relay row (front)
+rel_x0 = ix + END_MARGIN + RIB_T
 rel_y0 = stack_y0 + RIB_T
-esp_y0 = rel_y0 + rel_h + RIB_T
-# ESP sits flush against the right side of its column so USB-C faces the wall
-esp_x0 = col_x1 - esp_w
-rel_x0 = col_x0
+# Back row: remote left, ESP right
+row1_y0 = rel_y0 + rel_h + 2 * RIB_T
+rem_x0 = rel_x0
+rem_y0 = row1_y0 + (row1_h - rem_h) / 2
+esp_x0 = ix + inner_x - END_MARGIN - RIB_T - esp_w
+esp_y0 = row1_y0 + (row1_h - esp_h) / 2
+# Vents cover everything right of the remote (the remote pocket stays solid)
+col_x0 = rem_x0 + rem_w + RIB_T
 
 # ----------------------------------------------------------------------------
 # Base
@@ -214,11 +220,16 @@ if FLOOR_GRILLE:
 
 frame(base, "remote", rem_x0, rem_y0, rem_x0 + rem_w, rem_y0 + rem_h, iz - 0.5, iz + RIB_H)
 frame(base, "relay", rel_x0, rel_y0, rel_x0 + rel_w, rel_y0 + rel_h, iz - 0.5, iz + RIB_H)
-frame(base, "esp", esp_x0, esp_y0, esp_x0 + esp_w, esp_y0 + esp_h, iz - 0.5, iz + RIB_H)
+# Raised bed: two rails along the long edges (the USB-C connector hangs below the
+# board, between/past the rails, and the floor vents stay open)
+RAIL_W = 3.0
+for i, (ry0, ry1) in enumerate(((esp_y0, esp_y0 + RAIL_W), (esp_y0 + esp_h - RAIL_W, esp_y0 + esp_h))):
+    add(base, box(f"esp_rail{i}", esp_x0, ry0, iz - 0.5, esp_x0 + esp_w, ry1, iz + ESP_BED_H))
+frame(base, "esp", esp_x0, esp_y0, esp_x0 + esp_w, esp_y0 + esp_h, iz - 0.5, iz + ESP_BED_H + RIB_H)
 # Gap in the ESP pocket's right rib so the USB-C plug can reach the board
 esp_cy = esp_y0 + esp_h / 2
 cut(base, box("usb_notch", esp_x0 + esp_w - 0.1, esp_cy - USB_W / 2, iz,
-              esp_x0 + esp_w + RIB_T + 0.1, esp_cy + USB_W / 2, iz + RIB_H + 1))
+              esp_x0 + esp_w + RIB_T + 0.1, esp_cy + USB_W / 2, iz + ESP_BED_H + RIB_H + 1))
 
 # Screw posts in the four corners
 for i, (px, py) in enumerate(post_pts):
@@ -228,7 +239,7 @@ for i, (px, py) in enumerate(post_pts):
 
 # USB-C cable opening in the right end wall, centred on the ESP board
 cut(base, box("usb", OX - WALL - 1, esp_cy - USB_W / 2, iz,
-              OX + 1, esp_cy + USB_W / 2, iz + USB_H))
+              OX + 1, esp_cy + USB_W / 2, iz + ESP_BED_H + USB_H))
 
 # ----------------------------------------------------------------------------
 # Lid (modelled flat, lip facing up, placed beside the base for printing)
