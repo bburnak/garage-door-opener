@@ -207,7 +207,7 @@ static void setup_wifi()
 #define WIFI_TX_POWER WIFI_POWER_8_5dBm
 #endif
     WiFi.setTxPower(WIFI_TX_POWER);
-    WiFi.setSleep(true);  // modem sleep: lower idle power, still receives MQTT
+    WiFi.setSleep(false);  // modem sleep off: commands arrive immediately instead of waiting for the next beacon
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     uint32_t start = millis();
